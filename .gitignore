@@ -9,6 +9,12 @@ build/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+
+# Service account and sensitive files
+service-account.json
+google-ads.yaml
 
 # Logs
 *.log
@@ -28,6 +34,11 @@ pnpm-debug.log*
 # Coverage and cache
 coverage/
 .cache/
+
+# PM2
+.pm2/
+pids/
+*.pid
 
 # Lockfiles you may want to keep tracked (uncomment to ignore)
 # package-lock.json

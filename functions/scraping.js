@@ -123,8 +123,6 @@ async function scrapePage(url) {
 	}
 }
 
-module.exports = { scrapePage };
-
 // Build a JSON object with the requested keys
 function buildJson(result) {
 	const h = result.headings || [];
@@ -139,7 +137,7 @@ function buildJson(result) {
 }
 
 // Test helper: call scrapePage and print full JSON
-async function testScrape(url) {
+async function scrapWebsiteInfo(url) {
 	try {
 		const result = await scrapePage(url);
 		const out = buildJson(result);
@@ -152,8 +150,8 @@ async function testScrape(url) {
 
 // Main runner — only run when executed directly
 async function main() {
-	const url = process.argv[2] || 'https://causalfunnel.com';
-	await testScrape(url);
+	const url = 'https://causalfunnel.com';
+	await scrapWebsiteInfo(url);
 }
 
 if (require.main === module) {

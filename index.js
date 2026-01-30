@@ -5,6 +5,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
 const jwt = require('jsonwebtoken');
+const { processUserMessage, handleAdminMessage, resetAiForUser, getAiStateInfo } = require('./functions/aiChatHandler');
 
 const app = express();
 app.use(cors());
@@ -22,7 +23,7 @@ const users = new Map();
 const owners = new Map();
 
 // Mongo
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb://localhost:27017';
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const MONGO_DB = process.env.MONGO_DB || 'aichatbot';
 let chatsCollection = null;
 (async function initMongo(){
@@ -95,11 +96,78 @@ io.on('connection', async (socket) => {
       if (ownerUserId && owners.get(ownerUserId) === socket.id) owners.delete(ownerUserId);
     });
 
+    // Handler for owner:ready - when owner connects/requests active users
+    socket.on('owner:ready', async (payload) => {
+      try {
+        const reqOwnerId = payload?.ownerId || ownerUserId;
+        console.log('[io] owner:ready for', reqOwnerId);
+        
+        // Send list of active users for this owner
+        if (reqOwnerId) {
+          const activeUsers = [];
+          
+          // Get all connected users
+          for (const [userId, socketId] of users.entries()) {
+            // Check if this user belongs to this owner
+            try {
+              if (chatsCollection) {
+                const doc = await chatsCollection.findOne({ userId });
+                if (doc && doc.ownerId === reqOwnerId) {
+                  activeUsers.push(userId);
+                }
+              }
+            } catch(e) { /* ignore */ }
+          }
+          
+          socket.emit('active-users', { users: activeUsers });
+          console.log('[io] sent active-users to owner', reqOwnerId, ':', activeUsers);
+        }
+      } catch(e) {
+        console.error('[io] owner:ready error', e);
+      }
+    });
+
+    // Handler for get:active-users - same as owner:ready
+    socket.on('get:active-users', async () => {
+      try {
+        console.log('[io] get:active-users for owner', ownerUserId);
+        
+        if (ownerUserId) {
+          const activeUsers = [];
+          
+          for (const [userId, socketId] of users.entries()) {
+            try {
+              if (chatsCollection) {
+                const doc = await chatsCollection.findOne({ userId });
+                if (doc && doc.ownerId === ownerUserId) {
+                  activeUsers.push(userId);
+                }
+              }
+            } catch(e) { /* ignore */ }
+          }
+          
+          socket.emit('active-users', { users: activeUsers });
+          console.log('[io] sent active-users:', activeUsers);
+        }
+      } catch(e) {
+        console.error('[io] get:active-users error', e);
+      }
+    });
+
     // Owner can send messages to a specific user
     socket.on('message', async (payload) => {
       try {
         const { userId: uid, text } = payload || {};
         if (!uid) return;
+
+        // ============ DEACTIVATE AI WHEN ADMIN RESPONDS ============
+        // When admin sends a message, AI stops responding
+        try {
+          await handleAdminMessage(uid);
+        } catch (aiError) {
+          console.error('[AI] Error deactivating AI:', aiError);
+        }
+        // ============ END AI DEACTIVATION ============
 
         // forward to user socket if connected
         const sid = users.get(uid);
@@ -160,21 +228,41 @@ io.on('connection', async (socket) => {
     // initialize buffer for user
     if (!messagesBuffer.has(uid)) messagesBuffer.set(uid, []);
 
-    // determine owner for this user (from metadata buffer or DB)
-    let targetOwner = null;
-    const meta = metadataBuffer.get(uid) || {};
-    if (meta && meta.ownerId) targetOwner = meta.ownerId;
+    // determine owner for this user (from query, metadata buffer, or DB)
+    let targetOwner = ownerUserId || null; // Use ownerId from connection query if provided
+    
+    if (!targetOwner) {
+      const meta = metadataBuffer.get(uid) || {};
+      if (meta && meta.ownerId) targetOwner = meta.ownerId;
+    }
+    
     if (!targetOwner && chatsCollection) {
       try {
         const doc = await chatsCollection.findOne({ userId: uid });
         if (doc && doc.ownerId) targetOwner = doc.ownerId;
       } catch(e){ /* ignore */ }
     }
+    
+    // If we have an ownerId, save it to the chat document
+    if (targetOwner && chatsCollection) {
+      try {
+        await chatsCollection.updateOne(
+          { userId: uid },
+          {
+            $setOnInsert: { userId: uid, createdAt: new Date(), conversation: [] },
+            $set: { ownerId: targetOwner }
+          },
+          { upsert: true }
+        );
+        console.log('[io] assigned user', uid, 'to owner', targetOwner);
+      } catch(e) { console.error('save ownerId error', e); }
+    }
 
     // notify owners (prefer targetOwner)
     try {
       if (targetOwner) {
         sendToOwnerOrBroadcast(targetOwner, 'user:connected', { userId: uid });
+        console.log('[io] notified owner', targetOwner, 'about user connection:', uid);
       } else {
         console.log('[io] user connected but no owner assigned yet for', uid);
       }
@@ -241,9 +329,14 @@ io.on('connection', async (socket) => {
       try {
         const text = (payload && payload.text) || '';
 
-        // figure out owner
-        const meta = metadataBuffer.get(uid) || {};
-        let targetOwnerId = meta.ownerId || null;
+        // figure out owner - check connection query first
+        let targetOwnerId = ownerUserId || null;
+        
+        if (!targetOwnerId) {
+          const meta = metadataBuffer.get(uid) || {};
+          targetOwnerId = meta.ownerId || null;
+        }
+        
         if (!targetOwnerId && chatsCollection) {
           try {
             const doc = await chatsCollection.findOne({ userId: uid });
@@ -253,8 +346,44 @@ io.on('connection', async (socket) => {
 
         // send message to the owner (or broadcast if unknown)
         try { 
-          if (targetOwnerId) sendToOwnerOrBroadcast(targetOwnerId, 'message', { from: 'user', text, userId: uid, ts: Date.now() });
-          else console.log('[io] incoming message but no owner assigned for', uid);
+          if (targetOwnerId) {
+            // Get metadata from buffer or database
+            let meta = metadataBuffer.get(uid) || {};
+            
+            // If metadata not in buffer, try to load from database
+            if ((!meta.username && !meta.useremail && !meta.userphone) && chatsCollection) {
+              try {
+                const doc = await chatsCollection.findOne({ userId: uid });
+                if (doc) {
+                  meta = {
+                    username: doc.username || null,
+                    useremail: doc.useremail || null,
+                    userphone: doc.userphone || null,
+                    ownerId: doc.ownerId || null
+                  };
+                  // Update buffer for future messages
+                  metadataBuffer.set(uid, meta);
+                  console.log('[io] loaded metadata from DB for', uid);
+                }
+              } catch (dbError) {
+                console.error('[io] error loading metadata from DB:', dbError);
+              }
+            }
+            
+            const messagePayload = { 
+              from: 'user', 
+              text, 
+              userId: uid, 
+              ts: Date.now(),
+              username: meta.username || null,
+              useremail: meta.useremail || null,
+              userphone: meta.userphone || null
+            };
+            sendToOwnerOrBroadcast(targetOwnerId, 'message', messagePayload);
+            console.log('[io] forwarded user message to owner', targetOwnerId, 'with metadata:', { username: meta.username, useremail: meta.useremail, userphone: meta.userphone });
+          } else {
+            console.log('[io] incoming message but no owner assigned for', uid);
+          }
         } catch(e){ console.error('emit message to owner error', e); }
 
         // push to buffer
@@ -268,11 +397,63 @@ io.on('connection', async (socket) => {
           if (chatsCollection) {
             await chatsCollection.updateOne(
               { userId: uid },
-              { $setOnInsert: { userId: uid, createdAt: new Date() }, $push: { conversation: msgObj } },
+              { 
+                $setOnInsert: { userId: uid, createdAt: new Date() },
+                $set: { ownerId: targetOwnerId || null },
+                $push: { conversation: msgObj }
+              },
               { upsert: true }
             );
           }
         } catch(e){ console.error('mongo append user message error', e); }
+
+        // ============ AI RESPONSE INTEGRATION ============
+        // Process message with AI if admin hasn't taken over
+        try {
+          console.log(`[AI] Processing message for user ${uid}, ownerId: ${targetOwnerId || 'none'}`);
+          const aiResponse = await processUserMessage(uid, text, targetOwnerId);
+          
+          if (aiResponse) {
+            console.log(`[AI] Generated response for user ${uid}`);
+            // Send AI response to user
+            const sid = users.get(uid);
+            if (sid) {
+              io.to(sid).emit('message', aiResponse);
+              console.log(`[AI] Sent response to user ${uid} via socket ${sid}`);
+            }
+            
+            // Notify owner about AI response
+            if (targetOwnerId) {
+              sendToOwnerOrBroadcast(targetOwnerId, 'message', aiResponse);
+              console.log(`[AI] Notified owner ${targetOwnerId} about AI response`);
+            }
+            
+            // Add to message buffer
+            const aiArr = messagesBuffer.get(uid) || [];
+            aiArr.push(aiResponse);
+            messagesBuffer.set(uid, aiArr);
+            
+            // Persist AI message to MongoDB
+            try {
+              if (chatsCollection) {
+                await chatsCollection.updateOne(
+                  { userId: uid },
+                  { 
+                    $setOnInsert: { userId: uid, createdAt: new Date() },
+                    $set: { ownerId: targetOwnerId || null },
+                    $push: { conversation: aiResponse }
+                  },
+                  { upsert: true }
+                );
+              }
+            } catch(e) { console.error('mongo append AI message error', e); }
+          } else {
+            console.log(`[AI] No response generated for user ${uid} (AI might be inactive)`);
+          }
+        } catch (aiError) {
+          console.error('[AI] Error processing user message:', aiError);
+        }
+        // ============ END AI INTEGRATION ============
 
       } catch (e) { console.error(e); }
     });
@@ -281,22 +462,41 @@ io.on('connection', async (socket) => {
   // allow owner to set metadata via socket (from dashboard or admin)
   socket.on('setMetadata', async (payload) => {
     try {
+      console.log('[setMetadata] 📝 Received payload:', JSON.stringify(payload, null, 2));
       const { userId: uid, username, useremail, userphone, ownerId } = payload || {};
-      if (!uid) return;
+      if (!uid) {
+        console.log('[setMetadata] ❌ No userId in payload, ignoring');
+        return;
+      }
       const meta = { username: username || null, useremail: useremail || null, userphone: userphone || null, ownerId: ownerId || null };
+      console.log('[setMetadata] 💾 Storing in buffer for userId:', uid, 'meta:', meta);
       metadataBuffer.set(uid, meta);
       if (chatsCollection) {
-        await chatsCollection.updateOne(
+        console.log('[setMetadata] 🗄️  Upserting to MongoDB...');
+        const result = await chatsCollection.updateOne(
           { userId: uid },
           { $setOnInsert: { userId: uid, createdAt: new Date() }, $set: meta },
           { upsert: true }
         );
+        console.log('[setMetadata] ✅ MongoDB update result:', {
+          matched: result.matchedCount,
+          modified: result.modifiedCount,
+          upserted: result.upsertedCount,
+          upsertedId: result.upsertedId
+        });
+      } else {
+        console.log('[setMetadata] ⚠️  No chatsCollection, skipping DB save');
       }
       // notify the specific owner only
       try {
-        if (ownerId) sendToOwnerOrBroadcast(ownerId, 'metadata:updated', Object.assign({ userId: uid }, meta));
-      } catch(e){ console.error('emit metadata update error', e); }
-    } catch (e) { console.error('socket setMetadata error', e); }
+        if (ownerId) {
+          console.log('[setMetadata] 📢 Notifying owner:', ownerId);
+          sendToOwnerOrBroadcast(ownerId, 'metadata:updated', Object.assign({ userId: uid }, meta));
+        } else {
+          console.log('[setMetadata] ℹ️  No ownerId, skipping owner notification');
+        }
+      } catch(e){ console.error('[setMetadata] ❌ emit metadata update error', e); }
+    } catch (e) { console.error('[setMetadata] ❌ socket setMetadata error', e); }
   });
 
 }); // end io.on('connection')
@@ -323,21 +523,311 @@ app.get('/chats/:userId', async (req, res) => {
 app.post('/chats/:userId/metadata', async (req, res) => {
   try {
     const uid = req.params.userId;
+    console.log('[HTTP metadata] 📝 POST /chats/:userId/metadata');
+    console.log('[HTTP metadata] 👤 userId:', uid);
+    console.log('[HTTP metadata] 📦 body:', JSON.stringify(req.body, null, 2));
     const { username, useremail, userphone, ownerId } = req.body || {};
     const meta = { username: username || null, useremail: useremail || null, userphone: userphone || null, ownerId: ownerId || null };
+    console.log('[HTTP metadata] 💾 Storing in buffer:', meta);
     metadataBuffer.set(uid, meta);
     if (chatsCollection) {
-      await chatsCollection.updateOne(
+      console.log('[HTTP metadata] 🗄️  Upserting to MongoDB...');
+      const result = await chatsCollection.updateOne(
         { userId: uid },
         { $setOnInsert: { userId: uid, createdAt: new Date() }, $set: meta },
         { upsert: true }
       );
+      console.log('[HTTP metadata] ✅ MongoDB update result:', {
+        matched: result.matchedCount,
+        modified: result.modifiedCount,
+        upserted: result.upsertedCount
+      });
+    } else {
+      console.log('[HTTP metadata] ⚠️  No chatsCollection, skipping DB save');
     }
     // notify owners
-    try { io.to('owners').emit('metadata:updated', Object.assign({ userId: uid }, meta)); } catch(e){ console.error('emit metadata update error', e); }
+    try { 
+      console.log('[HTTP metadata] 📢 Notifying owners room');
+      io.to('owners').emit('metadata:updated', Object.assign({ userId: uid }, meta)); 
+    } catch(e){ console.error('[HTTP metadata] ❌ emit metadata update error', e); }
+    console.log('[HTTP metadata] ✅ Success');
     res.json({ ok: true });
-  } catch (e) { console.error('metadata save error', e); res.status(500).json({ error: 'failed' }); }
+  } catch (e) { 
+    console.error('[HTTP metadata] ❌ metadata save error', e); 
+    res.status(500).json({ error: 'failed' }); 
+  }
 });
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(`Socket server listening on http://localhost:${PORT}`));
+
+// ============ AI MANAGEMENT API ENDPOINTS ============
+const {
+  storePdfResource,
+  storeTxtResource,
+  storeJsonResource,
+  deleteOwnerResources,
+  getOwnerResourceStats,
+} = require('./functions/storeResources');
+
+// Upload and store PDF resource for owner
+app.post('/api/ai/upload-pdf', async (req, res) => {
+  try {
+    const { ownerId, pdfPath, metadata } = req.body;
+    if (!ownerId || !pdfPath) {
+      return res.status(400).json({ error: 'ownerId and pdfPath are required' });
+    }
+    const result = await storePdfResource(ownerId, pdfPath, metadata);
+    res.json(result);
+  } catch (error) {
+    console.error('Error uploading PDF:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload and store TXT resource for owner
+app.post('/api/ai/upload-txt', async (req, res) => {
+  try {
+    const { ownerId, txtPath, metadata } = req.body;
+    if (!ownerId || !txtPath) {
+      return res.status(400).json({ error: 'ownerId and txtPath are required' });
+    }
+    const result = await storeTxtResource(ownerId, txtPath, metadata);
+    res.json(result);
+  } catch (error) {
+    console.error('Error uploading TXT:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload and store JSON resource for owner
+app.post('/api/ai/upload-json', async (req, res) => {
+  try {
+    const { ownerId, jsonData, metadata } = req.body;
+    if (!ownerId || !jsonData) {
+      return res.status(400).json({ error: 'ownerId and jsonData are required' });
+    }
+    const result = await storeJsonResource(ownerId, jsonData, metadata);
+    res.json(result);
+  } catch (error) {
+    console.error('Error uploading JSON:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get resource statistics for owner
+app.get('/api/ai/stats/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const stats = await getOwnerResourceStats(ownerId);
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete all resources for owner
+app.delete('/api/ai/resources/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const result = await deleteOwnerResources(ownerId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting resources:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset AI for a specific user (reactivate AI)
+app.post('/api/ai/reset/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await resetAiForUser(userId);
+    res.json({ success: true, message: 'AI reactivated for user' });
+  } catch (error) {
+    console.error('Error resetting AI:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get AI state for a user
+app.get('/api/ai/state/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const state = await getAiStateInfo(userId);
+    res.json(state);
+  } catch (error) {
+    console.error('Error getting AI state:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ KNOWLEDGE MANAGER API ENDPOINTS ============
+const {
+  saveQnA,
+  getQnAs,
+  deleteQnA,
+  saveProduct,
+  getProducts,
+  deleteProduct,
+  storeFileContent,
+} = require('./functions/knowledgeManager');
+
+// Q&A Management
+app.get('/api/knowledge/qna/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const qnas = await getQnAs(ownerId);
+    res.json({ success: true, data: qnas });
+  } catch (error) {
+    console.error('Error fetching Q&As:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/knowledge/qna', async (req, res) => {
+  try {
+    const { ownerId, _id, question, answer } = req.body;
+    if (!ownerId || !question || !answer) {
+      return res.status(400).json({ success: false, error: 'ownerId, question, and answer are required' });
+    }
+    const result = await saveQnA(ownerId, { _id, question, answer });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error saving Q&A:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/knowledge/qna/:ownerId/:qnaId', async (req, res) => {
+  try {
+    const { ownerId, qnaId } = req.params;
+    const result = await deleteQnA(ownerId, qnaId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error deleting Q&A:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Product/Service Management
+app.get('/api/knowledge/products/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const products = await getProducts(ownerId);
+    res.json({ success: true, data: products });
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/knowledge/products', async (req, res) => {
+  try {
+    const { ownerId, _id, name, description } = req.body;
+    if (!ownerId || !name || !description) {
+      return res.status(400).json({ success: false, error: 'ownerId, name, and description are required' });
+    }
+    const result = await saveProduct(ownerId, { _id, name, description });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error saving product:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/knowledge/products/:ownerId/:productId', async (req, res) => {
+  try {
+    const { ownerId, productId } = req.params;
+    const result = await deleteProduct(ownerId, productId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// File Upload (PDF, TXT, JSON)
+app.post('/api/knowledge/upload', async (req, res) => {
+  try {
+    const { ownerId, fileType, content, metadata } = req.body;
+    if (!ownerId || !fileType || !content) {
+      return res.status(400).json({ success: false, error: 'ownerId, fileType, and content are required' });
+    }
+    const result = await storeFileContent(ownerId, fileType, content, metadata);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Save/Update Company Website
+app.post('/api/knowledge/website', async (req, res) => {
+  try {
+    const { ownerId, websiteUrl } = req.body;
+    if (!ownerId) {
+      return res.status(400).json({ success: false, error: 'ownerId is required' });
+    }
+    
+    const knowledgebase = db.collection('knowledgebase');
+    await knowledgebase.updateOne(
+      { ownerId },
+      { $set: { companyWebsite: websiteUrl, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    
+    res.json({ success: true, message: 'Company website saved successfully' });
+  } catch (error) {
+    console.error('Error saving company website:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get Company Info
+app.get('/api/knowledge/website/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const knowledgebase = db.collection('knowledgebase');
+    const ownerInfo = await knowledgebase.findOne({ ownerId });
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        companyWebsite: ownerInfo?.companyWebsite || '' 
+      } 
+    });
+  } catch (error) {
+    console.error('Error fetching company website:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get chatui settings by ownerId
+app.get('/api/chatui/settings', async (req, res) => {
+  try {
+    const { ownerId } = req.query;
+    
+    if (!ownerId) {
+      return res.status(400).json({ success: false, error: 'ownerId query parameter is required' });
+    }
+    
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(MONGO_DB);
+    const chatuiCollection = db.collection('chatui');
+    
+    const chatuiSettings = await chatuiCollection.findOne({ ownerId });
+    
+    if (!chatuiSettings) {
+      return res.status(404).json({ success: false, error: 'Chat UI settings not found for this owner' });
+    }
+    
+    res.json({ success: true, data: chatuiSettings });
+  } catch (error) {
+    console.error('Error fetching chatui settings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
