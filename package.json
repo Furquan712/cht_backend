@@ -4,8 +4,12 @@
   "description": "Simple Socket.IO backend for AI chat demo",
   "main": "index.js",
   "scripts": {
+    "setup": "bash setup.sh",
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "dev:build": "cross-env NODE_ENV=development node build.js --watch",
+    "build": "cross-env NODE_ENV=production node build.js",
+    "build:dev": "cross-env NODE_ENV=development node build.js",
     "prod": "pm2 start ecosystem.config.js --env production",
     "prod:stop": "pm2 stop convertss-backend",
     "prod:restart": "pm2 restart convertss-backend",
@@ -14,7 +18,8 @@
     "prod:delete": "pm2 delete convertss-backend",
     "test": "node testAiChat.js",
     "test:embeddings": "node functions/getEmbeddings.js",
-    "test:vector": "node functions/storeVecDb.js"
+    "test:vector": "node functions/storeVecDb.js",
+    "deploy": "npm run build && node deploy.js"
   },
   "keywords": [],
   "author": "",
@@ -24,7 +29,9 @@
     "axios": "^1.13.2",
     "canvas": "^3.2.0",
     "cheerio": "^1.1.2",
+    "chokidar": "^5.0.0",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
     "http": "^0.0.1-security",
@@ -36,6 +43,7 @@
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.449",
     "socket.io": "^4.7.2",
+    "terser": "^5.46.0",
     "tesseract.js": "^7.0.0",
     "url": "^0.11.4"
   }

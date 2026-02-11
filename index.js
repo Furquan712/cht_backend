@@ -10,6 +10,27 @@ const { processUserMessage, handleAdminMessage, resetAiForUser, getAiStateInfo }
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static dist files if available (configurable via STATIC_DIST_PATH)
+const path = require('path');
+const fs = require('fs');
+const BACKEND_DIST = path.join(__dirname, 'dist');
+const DIST_DIR = process.env.STATIC_DIST_PATH || BACKEND_DIST;
+if (fs.existsSync(DIST_DIR)) {
+  // Serve files at root (e.g. /cnvrtss.bundle.min.js)
+  app.use(express.static(DIST_DIR));
+  // Also mount the same directory at /dist to support existing script tags that use /dist/...
+  app.use('/dist', express.static(DIST_DIR));
+  console.log('[static] serving static files from', DIST_DIR, ' (mounted at / and /dist)');
+  // SPA fallback for non-API routes (avoid interfering with API/socket endpoints)
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/chats') || req.path.startsWith('/socket.io')) return next();
+    res.sendFile(path.join(DIST_DIR, 'index.html'), (err) => { if (err) next(err); });
+  });
+} else {
+  console.log('[static] not serving static files; DIST_DIR not found:', DIST_DIR);
+}
+
 app.get('/', (req, res) => res.json({ ok: true }));
 
 const server = http.createServer(app);

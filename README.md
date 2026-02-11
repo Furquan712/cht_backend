@@ -1,756 +1,529 @@
-# Convertss.com Backend (Chatbot and Gen AI)
+# 🤖 Convertss.com
 
-A powerful AI-powered chatbot backend with vector search capabilities, real-time communication, and intelligent knowledge management using OpenAI embeddings and Qdrant vector database.
 
-## 🌟 Features
+## 📋 Table of Contents
 
-- **Real-time Chat**: Socket.IO based real-time bidirectional communication
-- **AI-Powered Responses**: Intelligent responses using OpenAI GPT models
-- **Vector Search**: Semantic search using Qdrant vector database
-- **Knowledge Management**: Store and retrieve Q&A, products, and services
-- **Embeddings Generation**: Convert text to vector embeddings for similarity search
-- **Web Scraping**: Extract content from websites for knowledge base
-- **PDF Processing**: Parse and extract text from PDF documents
-- **MongoDB Integration**: Persistent storage for chats, users, and metadata
+- [Overview](#overview)
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Setup & Installation](#setup--installation)
+- [Development](#development)
+- [Production Build](#production-build)
+- [Integration](#integration)
+- [Configuration](#configuration)
+- [API Reference](#api-reference)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+Here’s the updated version with **real-time form tracking** smoothly added and aligned to Convertss.com’s positioning:
+
+---
+
+## 🎯 Overview — Convertss.com AI Chat Widget
+
+The **Convertss AI Chat Widget** is a fast, lightweight, and fully embeddable chat interface designed to convert website visitors into qualified leads. It connects seamlessly with the Convertss backend to capture conversations, track form activity, and manage leads in real time from a single dashboard.
+
+It provides:
+
+* **Real-time chat messaging** powered by Socket.IO for instant responses
+* **AI-powered conversations** trained on your business data to assist users 24/7
+* **Pre-chat & in-chat forms** to collect lead details like name, email, phone, and intent
+* **Real-time form tracking** to monitor form views, field interactions, drop-offs, and submissions as they happen
+* **Centralized lead dashboard** combining chats and form data in one place
+* **AI spam detection** to automatically filter fake or low-quality submissions
+* **Session persistence** so conversations and form progress continue after refresh
+* **Customizable UI** to match your brand’s colors, fonts, and layout
+* **Human handoff support** when AI confidence is low or manual help is required
+* **Mobile-responsive design** optimized for all screen sizes
+
+Built for teams that want **better visibility, smarter automation, and higher conversion rates**. 🚀
+
+
+---
+
+## ✨ Features
+
+### Core Features
+✅ Real-time bidirectional communication (Socket.IO)  
+✅ AI responses with owner-specific knowledge base  
+✅ Admin takeover (AI deactivates when admin responds)  
+✅ Typing indicators  
+✅ Message persistence (localStorage + MongoDB)  
+✅ Unread message badges  
+✅ Keyboard shortcuts (Enter to send, Shift+Enter for newline)  
+
+### Customization
+✅ Theme colors (primary, text, backgrounds)  
+✅ Font sizes (xs, sm, base, lg, xl)  
+✅ Border radius (none, sm, md, lg, xl, full)  
+✅ Pre-chat form customization  
+✅ Welcome message customization  
+✅ Header text customization  
+
+### Developer Features
+✅ Environment-based configuration  
+✅ Automatic debug display (when `config-display` element exists)  
+✅ Public API for programmatic control  
+✅ Build optimization with minification  
+✅ Single-line integration  
+
+---
 
 ## 📁 Project Structure
 
 ```
-backend/
-├── index.js                      # Main server file with Socket.IO
-├── package.json                  # Dependencies and scripts
-├── .env                          # Environment variables (create this)
-├── functions/
-│   ├── aiChatHandler.js         # Main AI chat logic
-│   ├── aiResponse.js            # AI response generation
-│   ├── getEmbeddings.js         # OpenAI embeddings creation
-│   ├── knowledgeManager.js      # Knowledge base management
-│   ├── storeVecDb.js            # Qdrant vector database operations
-│   ├── storeResources.js        # Resource storage utilities
-│   ├── scraping.js              # Web scraping functionality
-│   └── pdftoText.js             # PDF text extraction
+client/
+├── dist/                          # Build output
+│   ├── cnvrtss.bundle.js         # Development build (readable)
+│   └── cnvrtss.bundle.min.js     # Production build (minified)
+│
+├── script.js                      # Main widget source code
+├── build.js                       # Build script with minification
+├── deploy.js                      # Deployment script (optional)
+├── setup.sh                       # Setup automation script
+│
+├── .env.development              # Development environment config
+├── .env.production               # Production environment config
+│
+├── test.html                     # Local testing page
+├── package.json                  # Dependencies & scripts
 └── README.md                     # This file
 ```
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js >= 18.x
-- MongoDB (local or cloud)
-- Qdrant Vector Database (cloud or self-hosted)
-- OpenAI API Key
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   cd backend
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Create `.env` file**
-   ```bash
-   touch .env
-   ```
-
-4. **Configure environment variables** (see Configuration section below)
-
-5. **Start development server**
-   ```bash
-   npm start
-   ```
-
-## ⚙️ Configuration
-
-Create a `.env` file in the backend directory with the following variables:
-
-```env
-# Server Configuration
-PORT=3001
-NODE_ENV=development
-
-# MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017
-MONGO_DB=aichatbot
-
-# OpenAI Configuration
-OPENAI_API_KEY=your_openai_api_key_here
-
-# Qdrant Vector Database Configuration
-QDRANT_HOST=https://your-qdrant-instance.cloud.qdrant.io
-QDRANT_API_KEY=your_qdrant_api_key_here
-QDRANT_URL=https://your-qdrant-instance.cloud.qdrant.io:6333
-
-# JWT Configuration (optional)
-JWT_SECRET=your_jwt_secret_key_here
-
-# CORS Configuration (optional)
-ALLOWED_ORIGINS=http://localhost:3000,https://convertss.com
-```
-
-### Getting API Keys
-
-1. **OpenAI API Key**: 
-   - Go to [OpenAI Platform](https://platform.openai.com/)
-   - Create an account and navigate to API keys
-   - Generate a new API key
-
-2. **Qdrant**:
-   - Sign up at [Qdrant Cloud](https://cloud.qdrant.io/)
-   - Create a new cluster
-   - Get your API key and cluster URL
-
-3. **MongoDB**:
-   - Use local MongoDB: `mongodb://localhost:27017`
-   - Or use [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) for cloud hosting
-
-## 🧠 How It Works
-
-### Vector Search & Embeddings
-
-The system uses a sophisticated vector-based semantic search approach:
-
-1. **Text to Embeddings**
-   - User queries and knowledge base content are converted to vector embeddings using OpenAI's `text-embedding-3-small` model
-   - Each embedding is a 1536-dimensional vector representing semantic meaning
-
-2. **Storage in Qdrant**
-   - Embeddings are stored in Qdrant vector database
-   - Organized in collections (e.g., `qa_knowledge`, `products`, `services`)
-   - Each vector point includes metadata (original text, category, etc.)
-
-3. **Semantic Search**
-   - When a user asks a question, it's converted to an embedding
-   - Qdrant performs cosine similarity search to find closest matches
-   - Most relevant results are retrieved and used to provide context to AI
-
-4. **AI Response Generation**
-   - Retrieved context is combined with user query
-   - Sent to OpenAI GPT model for intelligent response generation
-   - Response is contextually aware and based on your knowledge base
-
-### Simple Workflow Diagram
-
-```
-User Query
-    ↓
-Convert to Embedding (OpenAI)
-    ↓
-Vector Search (Qdrant)
-    ↓
-Retrieve Relevant Context
-    ↓
-Generate AI Response (OpenAI GPT)
-    ↓
-Send to User (Socket.IO)
-```
-
-## 🔄 Complete Chatbot Flow Diagram
-
-### End-to-End System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           CONVERTSS.COM CHATBOT SYSTEM                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────┐                                    ┌──────────────────┐
-│   Web Client     │                                    │   Admin/Owner    │
-│  (React/Next.js) │                                    │    Dashboard     │
-└────────┬─────────┘                                    └────────┬─────────┘
-         │                                                       │
-         │ Socket.IO Connection                                 │
-         │ (Real-time WebSocket)                                │
-         │                                                       │
-         └───────────────────┬───────────────────────────────────┘
-                             │
-                             ▼
-         ┌───────────────────────────────────────────────────┐
-         │         Socket.IO Server (index.js)               │
-         │  • Manages connections (users & owners)           │
-         │  • Routes messages between parties                │
-         │  • Handles join/leave events                      │
-         │  • Broadcasts notifications                       │
-         └───────────────┬───────────────────────────────────┘
-                         │
-         ┌───────────────┴────────────────┐
-         │                                │
-         ▼                                ▼
-┌─────────────────┐            ┌──────────────────────┐
-│  User Message   │            │  Owner/Admin Message │
-└────────┬────────┘            └──────────┬───────────┘
-         │                                │
-         │                                │
-         ▼                                ▼
-┌─────────────────────────────────────────────────────────┐
-│           AI Chat Handler (aiChatHandler.js)            │
-│  • Checks AI state (enabled/disabled per user)          │
-│  • Routes to AI or human handler                        │
-│  • Manages conversation context                         │
-│  • Stores messages in MongoDB                           │
-└────────┬────────────────────────────────────────────────┘
-         │
-         │ If AI is enabled
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│         AI Response Generator (aiResponse.js)           │
-│  Step 1: Analyze user query                             │
-│  Step 2: Search knowledge base for context              │
-│  Step 3: Generate AI response with context              │
-└────────┬────────────────────────────────────────────────┘
-         │
-         ├─────────────────────────────────┐
-         │                                 │
-         ▼                                 ▼
-┌──────────────────────┐        ┌────────────────────────┐
-│  Knowledge Manager   │        │   Direct AI Response   │
-│ (knowledgeManager.js)│        │   (No context needed)  │
-└──────────┬───────────┘        └────────────────────────┘
-           │
-           │ Search for relevant context
-           │
-           ▼
-┌─────────────────────────────────────────────────────────┐
-│        Step A: Generate Query Embedding                 │
-│                (getEmbeddings.js)                        │
-│  ┌────────────────────────────────────────┐             │
-│  │  User Query → OpenAI API               │             │
-│  │  Model: text-embedding-3-small         │             │
-│  │  Output: 1536-dimensional vector       │             │
-│  └────────────────────────────────────────┘             │
-└────────┬────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│      Step B: Vector Similarity Search                   │
-│              (storeVecDb.js)                             │
-│  ┌────────────────────────────────────────┐             │
-│  │  Query Qdrant Collections:             │             │
-│  │  • qa_knowledge (Q&A pairs)            │             │
-│  │  • products (Product info)             │             │
-│  │  • services (Service descriptions)     │             │
-│  │  • resources (Scraped content)         │             │
-│  │                                        │             │
-│  │  Cosine Similarity Search              │             │
-│  │  Returns: Top 5 most relevant results  │             │
-│  └────────────────────────────────────────┘             │
-└────────┬────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│     Step C: Context-Aware Response Generation           │
-│  ┌────────────────────────────────────────┐             │
-│  │  Combine:                              │             │
-│  │  • User query                          │             │
-│  │  • Retrieved context from Qdrant       │             │
-│  │  • System prompt/instructions          │             │
-│  │  • Conversation history                │             │
-│  │                                        │             │
-│  │  Send to: OpenAI GPT API               │             │
-│  │  Model: gpt-4 or gpt-3.5-turbo         │             │
-│  │  Output: Intelligent, context-aware    │             │
-│  │          response                      │             │
-│  └────────────────────────────────────────┘             │
-└────────┬────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│          Step D: Store & Send Response                  │
-│  • Save to MongoDB (chats collection)                   │
-│  • Emit via Socket.IO to user                           │
-│  • Notify admin/owner if connected                      │
-└─────────────────────────────────────────────────────────┘
-
-
-═══════════════════════════════════════════════════════════
-            KNOWLEDGE BASE SETUP FLOW
-═══════════════════════════════════════════════════════════
-
-┌─────────────────────────────────────────────────────────┐
-│              DATA INPUT SOURCES                         │
-└────────┬────────────────────────────────────────────────┘
-         │
-    ┌────┴────┬──────────┬──────────┬─────────┐
-    │         │          │          │         │
-    ▼         ▼          ▼          ▼         ▼
-┌───────┐ ┌──────┐ ┌─────────┐ ┌──────┐ ┌────────┐
-│Manual │ │ PDF  │ │ Website │ │ API  │ │  JSON  │
-│ Q&A   │ │Upload│ │Scraping │ │ Data │ │ Import │
-└───┬───┘ └───┬──┘ └────┬────┘ └───┬──┘ └────┬───┘
-    │         │         │          │         │
-    └─────────┴────┬────┴──────────┴─────────┘
-                   │
-                   ▼
-         ┌──────────────────────┐
-         │  Text Extraction &   │
-         │     Processing       │
-         │  • PDF → Text        │
-         │  • HTML → Text       │
-         │  • Clean & Format    │
-         └──────────┬───────────┘
-                    │
-                    ▼
-         ┌──────────────────────┐
-         │  Generate Embeddings │
-         │   (OpenAI API)       │
-         │  text-embedding-     │
-         │    3-small           │
-         └──────────┬───────────┘
-                    │
-         ┌──────────┴───────────┐
-         │                      │
-         ▼                      ▼
-┌─────────────────┐    ┌────────────────┐
-│    MongoDB      │    │    Qdrant      │
-│  (Metadata &    │    │  (Vector DB)   │
-│   Original Text)│    │  • Embeddings  │
-│                 │    │  • Fast Search │
-│  Collections:   │    │                │
-│  • qa_items     │    │  Collections:  │
-│  • products     │    │  • qa_knowledge│
-│  • services     │    │  • products    │
-│  • resources    │    │  • services    │
-└─────────────────┘    └────────────────┘
-
-
-═══════════════════════════════════════════════════════════
-         REAL-TIME COMMUNICATION FLOW
-═══════════════════════════════════════════════════════════
-
-User Actions:
-─────────────
-1. User connects → Socket.IO 'join-as-user' event
-2. Load chat history from MongoDB
-3. Display previous conversation
-4. User sends message → 'user-message' event
-
-   ▼
-┌────────────────────────────────────────┐
-│  Check AI State in MongoDB             │
-│  • Is AI enabled for this user?        │
-│  • Has owner taken over?               │
-└─────┬──────────────────────────────────┘
-      │
-      ├─── AI Enabled ───────┐
-      │                      │
-      │                      ▼
-      │            ┌──────────────────┐
-      │            │  Generate AI     │
-      │            │  Response        │
-      │            │  (Full flow above)│
-      │            └────────┬─────────┘
-      │                     │
-      │                     ▼
-      │            ┌──────────────────┐
-      │            │  Send to User    │
-      │            │  Notify Owner    │
-      │            └──────────────────┘
-      │
-      └─── AI Disabled ─────┐
-                            │
-                            ▼
-                   ┌──────────────────┐
-                   │  Queue message   │
-                   │  Wait for Owner  │
-                   │  Notify Owner    │
-                   └──────────────────┘
-
-Owner/Admin Actions:
-────────────────────
-1. Owner connects → 'join-as-owner' event
-2. See all active conversations
-3. Owner sends message → 'owner-message' event
-4. AI automatically disabled for that conversation
-5. Human takeover mode activated
-
-   ▼
-┌────────────────────────────────────────┐
-│  Update AI State                       │
-│  • Set AI disabled for user            │
-│  • Route messages to owner             │
-│  • Bypass AI response generation       │
-└────────────────────────────────────────┘
-
-
-═══════════════════════════════════════════════════════════
-              DATA PERSISTENCE LAYER
-═══════════════════════════════════════════════════════════
-
-MongoDB Collections:
-────────────────────
-┌─────────────────────────────────────────────┐
-│  chats                                      │
-│  • _id, userId, ownerId                     │
-│  • messages: [{sender, text, timestamp}]    │
-│  • metadata: {email, name, source}          │
-│  • createdAt, updatedAt                     │
-└─────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│  ai_chat_state                              │
-│  • userId                                   │
-│  • aiEnabled: boolean                       │
-│  • lastOwnerMessage: timestamp              │
-│  • conversationContext                      │
-└─────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│  qa_items / products / services             │
-│  • _id, question, answer                    │
-│  • category, tags                           │
-│  • embedding_id (ref to Qdrant)             │
-│  • createdAt, updatedAt                     │
-└─────────────────────────────────────────────┘
-
-Qdrant Collections:
-───────────────────
-┌─────────────────────────────────────────────┐
-│  qa_knowledge                               │
-│  • Vector: [1536 dimensions]                │
-│  • Payload: {text, question, answer, id}    │
-└─────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│  products / services                        │
-│  • Vector: [1536 dimensions]                │
-│  • Payload: {name, description, price, etc} │
-└─────────────────────────────────────────────┘
-
-
-═══════════════════════════════════════════════════════════
-           KEY TECHNICAL DECISIONS
-═══════════════════════════════════════════════════════════
-
-1. Why Socket.IO?
-   ✓ Real-time bidirectional communication
-   ✓ Automatic reconnection
-   ✓ Room-based messaging (user-specific channels)
-   ✓ Fallback to long-polling if WebSocket unavailable
-
-2. Why Qdrant for Vectors?
-   ✓ Fast similarity search (HNSW algorithm)
-   ✓ Scales to millions of vectors
-   ✓ Rich filtering capabilities
-   ✓ Cloud-hosted option available
-
-3. Why OpenAI Embeddings?
-   ✓ State-of-the-art semantic understanding
-   ✓ 1536 dimensions capture nuanced meaning
-   ✓ Pre-trained on vast knowledge
-   ✓ Cost-effective (text-embedding-3-small)
-
-4. Why MongoDB?
-   ✓ Flexible schema for varied chat data
-   ✓ Excellent for document-based storage
-   ✓ Easy to query conversation history
-   ✓ Scales horizontally
-
-5. Hybrid AI/Human Approach
-   ✓ AI handles initial queries (fast response)
-   ✓ Human can take over complex cases
-   ✓ Seamless handoff between AI and human
-   ✓ AI learns from human responses
-```
-
-## 📚 Key Components
-
-### 1. AI Chat Handler (`aiChatHandler.js`)
-Manages the chat flow and AI state:
-- Processes user messages
-- Handles admin/owner messages
-- Manages AI auto-response state
-- Integrates with knowledge base for context
-
-### 2. Knowledge Manager (`knowledgeManager.js`)
-Handles knowledge base operations:
-- Add/update/delete Q&A pairs
-- Manage products and services
-- Generate and store embeddings
-- Search knowledge base using vector similarity
-
-### 3. Embeddings Generation (`getEmbeddings.js`)
-Creates vector embeddings:
-- Converts text/JSON to embeddings
-- Uses OpenAI's embedding API
-- Supports batch processing
-
-### 4. Vector Database (`storeVecDb.js`)
-Qdrant operations:
-- Store embeddings with metadata
-- Perform similarity searches
-- Manage collections
-
-### 5. Web Scraping (`scraping.js`)
-Extract content from websites:
-- Fetch and parse web pages
-- Extract relevant text content
-- Clean and format data
-
-### 6. PDF Processing (`pdftoText.js`)
-Extract text from PDFs:
-- Parse PDF documents
-- Extract text content
-- Support for image-based PDFs (OCR)
-
-## 🔧 Production Deployment with PM2
-
-### Install PM2 Globally
-
-```bash
-npm install -g pm2
-```
-
-### Create PM2 Ecosystem File
-
-Create `ecosystem.config.js` in the backend directory:
-
-```javascript
-module.exports = {
-  apps: [{
-    name: 'convertss-backend',
-    script: './index.js',
-    instances: 2,
-    exec_mode: 'cluster',
-    watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'development',
-      PORT: 3001
-    },
-    env_production: {
-      NODE_ENV: 'production',
-      PORT: 3001
-    },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_file: './logs/combined.log',
-    time: true,
-    autorestart: true,
-    max_restarts: 10,
-    min_uptime: '10s'
-  }]
-};
-```
-
-### PM2 Commands
-
-```bash
-# Start application
-pm2 start ecosystem.config.js --env production
-
-# View logs
-pm2 logs convertss-backend
-
-# Monitor resources
-pm2 monit
-
-# List all processes
-pm2 list
-
-# Restart application
-pm2 restart convertss-backend
-
-# Stop application
-pm2 stop convertss-backend
-
-# Delete from PM2
-pm2 delete convertss-backend
-
-# Save PM2 configuration
-pm2 save
-
-# Setup PM2 to start on system boot
-pm2 startup
-```
-
-### Production Best Practices
-
-1. **Enable clustering** for better performance
-2. **Set memory limits** to prevent memory leaks
-3. **Configure log rotation**:
-   ```bash
-   pm2 install pm2-logrotate
-   pm2 set pm2-logrotate:max_size 10M
-   pm2 set pm2-logrotate:retain 7
-   ```
-
-4. **Monitor with PM2 Plus** (optional):
-   ```bash
-   pm2 link your-secret-key your-public-key
-   ```
-
-## 🛠️ Development Setup
-
-### Local Development
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server with auto-reload
-npm run start
-
-# Or use nodemon (if configured)
-npx nodemon index.js
-```
-
-### Environment-Specific Configurations
-
-**Development** (`.env.development`):
-```env
-NODE_ENV=development
-PORT=3001
-MONGODB_URI=mongodb://localhost:27017
-MONGO_DB=aichatbot_dev
-```
-
-**Production** (`.env.production`):
-```env
-NODE_ENV=production
-PORT=3001
-MONGODB_URI=your_production_mongodb_uri
-MONGO_DB=aichatbot_prod
-```
-
-## 🧪 Testing
-
-### Test Embeddings Generation
-
-```bash
-node functions/getEmbeddings.js
-```
-
-### Test Vector Database Connection
-
-```bash
-node functions/storeVecDb.js
-```
-
-### Test AI Response
-
-```bash
-node testAiChat.js
-```
-
-## 📊 API Endpoints
-
-### REST Endpoints
-
-```
-GET  /                          # Health check
-POST /api/knowledge/qa          # Add Q&A pair
-GET  /api/knowledge/qa          # Get all Q&A
-POST /api/knowledge/search      # Search knowledge base
-```
-
-### Socket.IO Events
-
-**Client → Server:**
-- `join-as-user` - User joins chat
-- `join-as-owner` - Owner/admin joins
-- `user-message` - User sends message
-- `owner-message` - Owner sends message
-- `reset-ai` - Reset AI for user
-
-**Server → Client:**
-- `new-message` - New message received
-- `ai-response` - AI generated response
-- `user-joined` - User joined notification
-- `chat-history` - Load previous messages
-
-## 🔒 Security Considerations
-
-1. **Never commit `.env` file** - Add to `.gitignore`
-2. **Use strong JWT secrets** in production
-3. **Enable CORS** only for trusted origins
-4. **Rate limit** API endpoints
-5. **Validate and sanitize** user inputs
-6. **Use HTTPS** in production
-7. **Keep dependencies updated**: `npm audit fix`
-
-## 📝 Scripts
-
-Add these to your `package.json`:
-
-```json
-{
-  "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "prod": "pm2 start ecosystem.config.js --env production",
-    "logs": "pm2 logs convertss-backend",
-    "stop": "pm2 stop convertss-backend",
-    "restart": "pm2 restart convertss-backend",
-    "test": "node testAiChat.js"
-  }
-}
-```
-
-## 🐛 Troubleshooting
-
-### MongoDB Connection Issues
-```bash
-# Check MongoDB is running
-mongod --version
-
-# Start MongoDB service
-brew services start mongodb-community  # macOS
-sudo systemctl start mongod            # Linux
-```
-
-### Qdrant Connection Issues
-- Verify `QDRANT_HOST` and `QDRANT_API_KEY` are correct
-- Check Qdrant cloud dashboard for cluster status
-- Test connection: `node functions/storeVecDb.js`
-
-### OpenAI API Errors
-- Verify API key is valid
-- Check API usage limits and billing
-- Ensure you have access to the models being used
-
-### PM2 Issues
-```bash
-# Clear PM2 dumps
-pm2 flush
-
-# Reset PM2 God Daemon
-pm2 kill
-pm2 resurrect
-```
-
-## 📈 Performance Optimization
-
-1. **Use connection pooling** for MongoDB
-2. **Cache frequent queries** using Redis (optional)
-3. **Batch embedding generation** for multiple items
-4. **Use PM2 cluster mode** for load balancing
-5. **Optimize vector search** with proper Qdrant configuration
-6. **Implement rate limiting** to prevent abuse
-
-## 🤝 Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Test thoroughly
-4. Submit a pull request
-
-## 📄 License
-
-ISC
-
-## 🆘 Support
-
-For issues and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check documentation at [convertss.com](https://convertss.com)
+### Key Files Explained
+
+#### `script.js`
+The main source code for the chat widget. Contains:
+- UI rendering and styling
+- Socket.IO client setup
+- Message handling logic
+- Pre-chat form management
+- Theme customization logic
+- Debug configuration display
+- Public API exposure
+
+#### `build.js`
+Build script that:
+- Reads environment variables from `.env.development` or `.env.production`
+- Creates both development and minified production bundles
+- Outputs to `dist/` folder
+- Shows size comparison and savings
+
+#### `test.html`
+Local testing page with:
+- Widget integration example
+- Debug configuration display
+- Test controls (open, close, send, clear)
+- Feature showcase
 
 ---
 
-**Built with ❤️ using Node.js, OpenAI, Qdrant, and MongoDB**
+## 🚀 Setup & Installation
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+- Backend server running (default: `http://localhost:3001`)
+
+### Installation Steps
+
+1. **Install dependencies:**
+```bash
+npm install
+```
+
+2. **Set up environment files:**
+
+**Development (`.env.development`):**
+```env
+API_BASE_URL=http://localhost:3001
+SOCKET_URL=http://localhost:3001
+WIDGET_VERSION=1.0.0-dev
+```
+
+**Production (`.env.production`):**
+```env
+API_BASE_URL=https://api.yourdomain.com
+SOCKET_URL=https://api.yourdomain.com
+WIDGET_VERSION=1.0.0
+```
+
+3. **Initial build:**
+```bash
+npm run build
+```
+
+---
+
+## 💻 Development
+
+### Build Commands
+
+```bash
+# Development build (uses .env.development)
+npm run dev:build
+
+# Watch mode (auto-rebuild on changes)
+npm run dev:build -- --watch
+
+# Production build (uses .env.production)
+npm run build
+
+# Deploy to production (custom deployment)
+npm run deploy
+```
+
+### Local Testing
+
+1. **Start your backend server:**
+```bash
+cd ../backend
+npm start
+```
+
+2. **Build the widget:**
+```bash
+npm run dev:build
+```
+
+3. **Open test page:**
+```bash
+open test.html
+# Or simply open test.html in your browser
+```
+
+4. **Check the debug output:**
+The test page automatically displays:
+- Socket URL
+- Owner ID
+- User ID
+- Socket connection status
+- Widget status
+
+### Development Workflow
+
+1. Make changes to `script.js`
+2. Run `npm run dev:build` (or use watch mode)
+3. Refresh `test.html` in browser
+4. Check browser console for logs (prefixed with `[chat widget]`)
+5. Use debug display on test page to verify configuration
+
+---
+
+## 🏗️ Production Build
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+This creates:
+- `dist/cnvrtss.bundle.js` - Development version (30KB, readable)
+- `dist/cnvrtss.bundle.min.js` - Production version (16KB, minified ~47% smaller)
+
+### Output Example
+```
+✅ Loaded environment from .env.production
+
+🔧 Build Configuration (production):
+   API_BASE_URL: https://api.yourdomain.com
+   SOCKET_URL: https://api.yourdomain.com
+   WIDGET_VERSION: 1.0.0
+
+🔨 Building widget...
+✅ Development build: dist/cnvrtss.bundle.js
+✅ Production build (minified): dist/cnvrtss.bundle.min.js
+
+📊 Size comparison:
+   Original: 30.80 KB
+   Minified: 16.32 KB
+   Savings: 47.0%
+
+✨ Build completed successfully!
+```
+
+### Deployment
+
+1. **Upload to CDN:**
+```bash
+# Upload dist/cnvrtss.bundle.min.js to your CDN
+aws s3 cp dist/cnvrtss.bundle.min.js s3://your-bucket/widgets/
+# or use your preferred CDN
+```
+
+2. **Update production URLs** in `.env.production`
+
+3. **Rebuild and redeploy**
+
+---
+
+## 🔌 Integration
+
+### Basic Integration (Production)
+
+Add this single line to your website before the closing `</body>` tag:
+
+```html
+<script src="https://cdn.yourdomain.com/cnvrtss.bundle.min.js?cid=YOUR_OWNER_ID"></script>
+```
+
+**That's it!** The widget will automatically:
+- Load with your owner ID from the `cid` parameter
+- Fetch your custom settings from the backend
+- Apply your theme colors and customizations
+- Connect to the Socket.IO server
+
+### Advanced Integration (Custom Configuration)
+
+For more control, you can set configuration before loading the widget:
+
+```html
+<script>
+  window.ChatbotConfig = {
+    socketUrl: 'https://api.yourdomain.com',
+    ownerId: '695c3ef7d03b804a5e6d721e'
+  };
+</script>
+<script src="https://cdn.yourdomain.com/cnvrtss.bundle.min.js"></script>
+```
+
+### Local Development Integration
+
+```html
+<script>
+  window.ChatbotConfig = {
+    socketUrl: 'http://localhost:3001',
+    ownerId: '695c3ef7d03b804a5e6d721e'
+  };
+</script>
+<script src="./dist/cnvrtss.bundle.min.js"></script>
+```
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `API_BASE_URL` | Backend API base URL | `https://api.yourdomain.com` |
+| `SOCKET_URL` | Socket.IO server URL | `https://api.yourdomain.com` |
+| `WIDGET_VERSION` | Widget version number | `1.0.0` |
+
+### ChatbotConfig Options
+
+Configure the widget by setting `window.ChatbotConfig` before loading the script:
+
+```javascript
+window.ChatbotConfig = {
+  // Required
+  ownerId: 'your-owner-id',          // Your unique owner ID
+  
+  // Optional
+  socketUrl: 'http://localhost:3001', // Socket.IO server URL
+  apiBase: 'http://localhost:3001',   // API base URL (for settings)
+  apiUrl: null,                       // Custom API endpoint (overrides socket)
+  apiKey: null,                       // API key for authentication
+  fetchOptions: {},                   // Additional fetch options
+  buildPayload: null                  // Custom payload builder function
+};
+```
+
+### Theme Customization
+
+Themes are configured via the backend API (`/api/chatui/settings`). Settings include:
+
+- `themeColorHex` - Primary theme color (hex)
+- `themeTextColorHex` - Text color on primary background
+- `chatBgColor` - Chat panel background (Tailwind class)
+- `botBubbleColor` - Bot message bubble color (Tailwind class)
+- `userBubbleColor` - User message bubble color (Tailwind class)
+- `iconBgColor` - Chat button background (Tailwind class)
+- `fontSize` - Text size (xs, sm, base, lg, xl)
+- `borderRadius` - Corner roundness (none, sm, md, lg, xl, full)
+- `headerName` - Chat header title
+- `headerMessage` - Chat header subtitle
+- `bubbleText` - Welcome message
+- `showPreChatForm` - Show/hide pre-chat form
+- `preChatHeading` - Pre-chat form button text
+- Field visibility and requirements (name, email, phone)
+
+---
+
+## 📚 API Reference
+
+### AIOFC_Chat API
+
+The widget exposes a global `AIOFC_Chat` object with the following methods:
+
+```javascript
+// Open the chat panel
+AIOFC_Chat.open();
+
+// Close the chat panel
+AIOFC_Chat.close();
+
+// Send a message programmatically
+AIOFC_Chat.send('Hello from JavaScript!');
+
+// Clear conversation history
+AIOFC_Chat.clear();
+
+// Get current widget status
+const status = AIOFC_Chat.getStatus();
+// Returns: {
+//   socketUrl: 'http://localhost:3001',
+//   ownerId: '695c3ef7d03b804a5e6d721e',
+//   userId: 'u_abc123',
+//   socketConnected: true,
+//   open: false
+// }
+```
+
+### Debug Display
+
+The widget automatically updates an element with `id="config-display"` if present:
+
+```html
+<pre id="config-display"></pre>
+```
+
+This displays:
+```json
+{
+  "socketUrl": "http://localhost:3001",
+  "ownerId": "695c3ef7d03b804a5e6d721e",
+  "userId": "u_abc123",
+  "socketConnected": true,
+  "widgetStatus": "Closed"
+}
+```
+
+Updates automatically when:
+- Socket connects/disconnects
+- Widget loads
+- Panel opens/closes
+
+---
+
+## 🐛 Troubleshooting
+
+### "Echo" Responses Instead of AI
+
+**Symptoms:** Messages are echoed back like "Echo: hello"
+
+**Causes:**
+1. Socket.IO connection failed
+2. Backend server not running
+3. CORS issues
+4. Wrong Socket URL
+
+**Solutions:**
+1. Check browser console for connection errors
+2. Verify backend is running: `lsof -ti:3001`
+3. Check `socketConnected` in debug display
+4. Ensure `ChatbotConfig.socketUrl` matches your backend
+
+### Widget Not Loading
+
+**Symptoms:** Chat button doesn't appear
+
+**Causes:**
+1. Script path incorrect
+2. JavaScript errors
+3. Bundle not built
+
+**Solutions:**
+1. Check browser console for errors
+2. Verify file exists: `ls -la dist/cnvrtss.bundle.min.js`
+3. Rebuild: `npm run build`
+4. Check network tab for 404 errors
+
+### Socket Connection Failed
+
+**Symptoms:** Debug shows `socketConnected: false`
+
+**Causes:**
+1. Backend not running
+2. CORS not configured
+3. Port mismatch
+4. Firewall blocking connection
+
+**Solutions:**
+1. Start backend: `cd ../backend && npm start`
+2. Check backend CORS settings
+3. Verify Socket URL matches backend port
+4. Check firewall/network settings
+
+### Styles Not Applied
+
+**Symptoms:** Widget appears unstyled or broken
+
+**Causes:**
+1. Settings API not responding
+2. Invalid theme colors
+3. Owner ID not found
+
+**Solutions:**
+1. Check settings endpoint: `/api/chatui/settings?ownerId=YOUR_ID`
+2. Verify owner ID is correct
+3. Check backend logs for errors
+4. Test with default settings (no owner ID)
+
+### Messages Not Saving
+
+**Symptoms:** Conversation disappears on refresh
+
+**Causes:**
+1. localStorage disabled
+2. Private browsing mode
+3. Storage quota exceeded
+
+**Solutions:**
+1. Enable localStorage in browser
+2. Use normal browsing mode
+3. Clear old localStorage data
+4. Check browser storage settings
+
+---
+
+## 📞 Support & Contributing
+
+### Getting Help
+
+1. Check browser console for errors
+2. Review backend logs
+3. Use debug display on test page
+4. Check Socket.IO connection status
+
+### Console Logging
+
+The widget logs helpful debug information with the `[chat widget]` prefix:
+
+```
+[chat widget] parsed adminId: 695c3ef7d03b804a5e6d721e
+[chat widget] fetching settings from http://localhost:3001/api/chatui/settings?ownerId=...
+[chat widget] ✅ connected to socket abc123 userId u_xyz789 ownerId 695c3ef7d03b804a5e6d721e
+[chat widget] 🔄 Syncing saved metadata on connect: {...}
+```
+
+---
+
+## 📄 License
+
+Private/Proprietary - AIOFC Project
+
+---
+
+## 🔄 Version History
+
+- **v1.0.0** - Initial production release
+  - Socket.IO integration
+  - AI response handling
+  - Theme customization
+  - Pre-chat forms
+  - Debug display
+  - Public API
